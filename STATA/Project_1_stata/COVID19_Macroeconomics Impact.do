@@ -1,16 +1,10 @@
                       
 /*=========================================================================================
 *******************************************************************************************
-                        
-	   Project name: Lights Out? COVID-19 Containment policies and Economic output								
-						
-	Robert C. M. Beyer			      Tarun Jain							Sonalika Sinha
-	  World Bank		Indian Institute of Management Ahmedabad        Reserve Bank of India
+					
 							
-							
-			Programmer:  Roshani Bulkunde, Research Assistant, IIMA
-							
-					Last updated:  28th October 2020
+			Programmer:  Roshani Bulkunde							
+			Last updated:  28th October 2020
 						 					
 						                     	      
 ******************************************************************************************						 						 
@@ -20,11 +14,7 @@
 					  
 					  
 			
-			
-			
-					  				  
-					  
-					  
+							  
 /*=============================================================================
  ******************************************************************************
 						SECTION: A
