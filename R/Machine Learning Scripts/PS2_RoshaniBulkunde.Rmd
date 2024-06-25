@@ -1,0 +1,349 @@
+---
+title: "PS2"
+author: "Roshani Bulkunde"
+date: "2024-02-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r clrenv}
+# clear the environment
+rm(list=ls())
+
+```
+
+
+# Set working directory
+```{r dir}
+setwd('C:/Users/rosha/Dropbox (GaTech)/Georgia Tech/Spring 2024/Econ 8803 ML for Econ/Problem sets/PS2')
+```
+
+```{r packages}
+# Load necessary libraries
+library(tidyverse)
+library(readxl)
+library(MASS)  # For stepAIC function
+library(dplyr) # For data manipulation
+library(glmnet)
+
+```
+### Part 1. Empirical Problems
+
+# 1. Cleaning the data
+```{r data}
+# Airbnb data
+airbnb_raw <- read_csv("C:/Users/rosha/Dropbox (GaTech)/Georgia Tech/Spring 2024/Econ 8803 ML for Econ/Problem sets/PS2/airbnb_data.csv")
+
+summary(airbnb_raw)
+```
+```{r clean}
+## 1(b)- Remove NA from outcome variable-price
+airbnb_c1 <- subset(airbnb_raw, subset=!is.na(airbnb_raw$price))
+
+## 1(c)
+
+#  To exclude observations that have missing data for only a subset of variables, create a logical vector that is a series of calls to is.na().
+missing <- is.na(airbnb_c1$accommodates) |
+        is.na(airbnb_c1$beds) |
+        is.na(airbnb_c1$number_of_reviews) |
+        is.na(airbnb_c1$review_scores_rating) 
+
+airbnb_c1 <- subset(airbnb_c1,
+                    subset=!(missing))
+
+## 1(d)- Create variable for host experience in years
+# check function "difftime"
+airbnb_c1$host_experience <- (as.double(difftime("2023-06-05", airbnb_c1$host_since, units = "days")))/365
+
+airbnb_c1 <- subset(airbnb_c1, subset=!is.na(airbnb_c1$host_experience))
+
+## 1(e)
+airbnb_c1 <- airbnb_c1 %>% mutate(entire_apt = if_else(room_type=="Entire home/apt", 1, 0, missing=TRUE))
+
+## 1(f)
+miss <- is.na(airbnb_c1$host_response_rate) |
+        is.na(airbnb_c1$number_of_reviews) |
+        is.na(airbnb_c1$review_scores_rating) 
+
+airbnb_c2 <- subset(airbnb_c1, subset=!(miss))
+
+# Create a variable for super host
+airbnb_c2 <- airbnb_c2 %>% mutate(host_is_superhost = if_else((host_response_rate==90 & number_of_reviews>=10 & review_scores_rating>=4.8) , 1, 0))    
+
+## 1(f)
+# Sort data by id
+airbnb_final <- airbnb_c2[order(airbnb_c2$id),]
+
+```
+```{r}
+#Remove unwanted datasets
+rm(airbnb_raw, airbnb_c1, airbnb_c2, miss, missing)
+```
+
+## 2. Analysis
+
+```{r 1.p2}
+# 2(a) Set the seed to 0
+set.seed(0)
+
+# 2(b) Randomly allocating 50% of the data to the test sample and the rest to the training sample.
+#sample( ) function randomly picks specified rows from the data set
+airbnb_split = sample(nrow(airbnb_final), nrow(airbnb_final)*.5)
+
+# Training and test sample
+airbnb_train <- airbnb_final[airbnb_split,]
+airbnb_test <- airbnb_final[-airbnb_split,]
+
+# 2(c) Linear regression model
+model_1 <- lm(price ~ accommodates + beds + host_experience + host_is_superhost + entire_apt + number_of_reviews + review_scores_rating, airbnb_test )
+
+summary(model_1)
+
+# R²
+summary(model_1)$r.squared
+ 
+#calculate MSE
+mean(model_1$residuals^2)
+
+```
+```{r poly}
+#2(d)-Second order polynomials
+model_2 <- lm(price ~ accommodates + I(accommodates^2) + beds + I(beds^2) + host_experience + I(host_experience^2) + number_of_reviews + I(number_of_reviews^2)+ review_scores_rating + I(review_scores_rating^2) + accommodates*beds + accommodates*host_experience + accommodates*number_of_reviews + accommodates*review_scores_rating + beds*host_experience + beds*number_of_reviews +  beds*review_scores_rating + host_experience*number_of_reviews + host_experience*review_scores_rating + number_of_reviews*review_scores_rating + host_is_superhost + entire_apt , airbnb_test )
+
+summary(model_2)
+
+# R²
+ summary(model_2)$r.squared
+ 
+#calculate MSE
+mean(model_2$residuals^2)
+```
+```{r backstepslctn}
+##2(e)
+# Backward Stepwise Selection
+model_2 <- lm(price ~ accommodates + I(accommodates^2) + beds + I(beds^2) + host_experience + I(host_experience^2) + number_of_reviews + I(number_of_reviews^2)+ review_scores_rating + I(review_scores_rating^2) + accommodates*beds + accommodates*host_experience + accommodates*number_of_reviews + accommodates*review_scores_rating + beds*host_experience + beds*number_of_reviews +  beds*review_scores_rating + host_experience*number_of_reviews + host_experience*review_scores_rating + number_of_reviews*review_scores_rating + host_is_superhost + entire_apt , airbnb_test )
+
+
+# Perform backward selection based on BIC
+##By default function uses AIC. k = log(nrow(airbnb_test)) is used to specify BIC but R will still indicatedit as AIC
+backward_bic <- stepAIC(model_2, direction = "backward", k = log(nrow(airbnb_test)), trace = FALSE)
+
+# Perform backward selection based on R-squared
+backward_r2 <- stepAIC(model_2, direction = "backward", trace = FALSE)
+
+# Summary of backward selection based on BIC
+summary(backward_bic)
+mean(backward_bic$residuals^2) #calculate MSE
+
+# Summary of backward selection based on R-squared
+summary(backward_r2)
+mean(backward_r2$residuals^2) #calculate MSE
+
+```
+```{r}
+#Alternative method of 
+backward_bic1 <- step(model_2, direction = "backward", k = log(nrow(airbnb_test)), trace = FALSE)
+
+# Perform backward selection based on R-squared
+backward_r21 <- step(model_2, direction = "backward", trace = FALSE)
+
+# Summary of backward selection based on BIC
+summary(backward_bic1)
+mean(backward_bic1$residuals^2) #calculate MSE
+
+# Summary of backward selection based on R-squared
+summary(backward_r21)
+mean(backward_r21$residuals^2) #calculate MSE
+```
+```{r 2f}
+## 2(f)
+## Ridge regression ##
+# install.packages('glmnet')
+
+# --> glmnet() doesn't allow the use of model formulas, so we setup the data
+
+#define matrix of predictor variables
+# model.matrix is a design matrix, Exclude the first column because it 
+                                   # corresponds to the intercept term
+
+## Train sample
+train_X <- model.matrix(price ~ accommodates + I(accommodates^2) + beds + I(beds^2) + host_experience + I(host_experience^2) + number_of_reviews + I(number_of_reviews^2)+ review_scores_rating + I(review_scores_rating^2) + accommodates*beds + accommodates*host_experience + accommodates*number_of_reviews + accommodates*review_scores_rating + beds*host_experience + beds*number_of_reviews +  beds*review_scores_rating + host_experience*number_of_reviews + host_experience*review_scores_rating + number_of_reviews*review_scores_rating + host_is_superhost + entire_apt , airbnb_train)[, -1]
+
+train_y <- airbnb_train$price
+
+## Test sample
+test_X <- model.matrix(price ~ accommodates + I(accommodates^2) + beds + I(beds^2) + host_experience + I(host_experience^2) + number_of_reviews + I(number_of_reviews^2)+ review_scores_rating + I(review_scores_rating^2) + accommodates*beds + accommodates*host_experience + accommodates*number_of_reviews + accommodates*review_scores_rating + beds*host_experience + beds*number_of_reviews +  beds*review_scores_rating + host_experience*number_of_reviews + host_experience*review_scores_rating + number_of_reviews*review_scores_rating + host_is_superhost + entire_apt , airbnb_test)[, -1]
+
+test_y <- airbnb_test$price
+#######################################################################
+
+#######  Ridge Regression Model ######
+
+# alpha corresponds to which part is being minimized; to fit the ridge regression model and specify alpha=0.
+
+# Create a grid of alpha values (tuning parameter for ridge regression)
+tuning_par <- seq(0, 10, length=3)
+
+# Train ridge regression models with different tuning parameters using cross-validation
+#perform k-fold cross-validation to find optimal lambda value
+ridge_model <- cv.glmnet(train_X, train_y, alpha = 0, lambda = tuning_par)
+
+#find optimal lambda value that minimizes test MSE
+best_ridge_lambda <- ridge_model$lambda.min
+best_ridge_lambda
+
+#produce plot of test MSE by lambda value
+plot(ridge_model) 
+
+# Train the final ridge regression model on the entire training data with the best lambda
+best_ridge_model <- glmnet(as.matrix(train_X), train_y, alpha = 0, lambda = best_ridge_lambda)
+
+# Make predictions on the test set
+predicted_ridge <- predict(best_ridge_model, s = best_ridge_lambda, newx = test_X)
+
+# Calculate MSE on the test set
+ridge_mse <- mean((predicted_ridge - test_y)^2)
+print(paste("Mean Squared Error (MSE) on Test Set:", ridge_mse))
+
+
+#######  Lasso Regression Model ######
+
+# alpha corresponds to which part is being minimized; to fit the ridge regression model and specify alpha=0.
+
+# Create a grid of alpha values (tuning parameter for ridge regression)
+tuning_par <- seq(0, 10, length=3)
+
+# Train ridge regression models with different tuning parameters using cross-validation
+#perform k-fold cross-validation to find optimal lambda value
+lasso_model <- cv.glmnet(train_X, train_y, alpha = 1, lambda = tuning_par)
+
+#find optimal lambda value that minimizes test MSE
+best_lasso_lambda <- lasso_model$lambda.min
+best_lasso_lambda
+
+#produce plot of test MSE by lambda value
+plot(lasso_model) 
+
+# Train the final ridge regression model on the entire training data with the best lambda
+best_lasso_model <- glmnet(as.matrix(train_X), train_y, alpha = 1, lambda = best_lasso_lambda)
+
+# Make predictions on the test set
+predicted_lasso <- predict(best_lasso_model, s = best_lasso_lambda, newx = test_X)
+
+# Calculate MSE on the test set
+lasso_mse <- mean((predicted_lasso - test_y)^2)
+print(paste("Mean Squared Error (MSE) on Test Set:", lasso_mse))
+
+```
+
+```{r 2g}
+#######  Ridge Regression Model ######
+
+# alpha corresponds to which part is being minimized; to fit the ridge regression model and specify alpha=0.
+
+# Create a grid of alpha values (tuning parameter for ridge regression)
+tuning_par <- seq(0, 10, length=3)
+
+# Train ridge regression models with different tuning parameters using cross-validation
+#perform 10-fold cross-validation to find optimal lambda value
+ridge_model2g <- cv.glmnet(train_X, train_y, alpha = 0, lambda = tuning_par, nfolds =10 )
+
+#find optimal lambda value that minimizes test MSE
+best_ridge_lambda2g <- ridge_model2g$lambda.min
+best_ridge_lambda2g
+
+#produce plot of test MSE by lambda value
+plot(ridge_model2g) 
+
+# Train the final ridge regression model on the entire training data with the best lambda
+best_ridge_model2g <- glmnet(as.matrix(train_X), train_y, alpha = 0, lambda = best_ridge_lambda2g)
+
+# Make predictions on the test set
+predicted_ridge2g <- predict(best_ridge_model2g, s = best_ridge_lambda2g, newx = test_X)
+
+# Calculate MSE on the test set
+ridge_mse2g <- mean((predicted_ridge2g - test_y)^2)
+print(paste("Mean Squared Error (MSE) on Test Set:", ridge_mse2g))
+
+
+#######  Lasso Regression Model ######
+
+# alpha corresponds to which part is being minimized; to fit the ridge regression model and specify alpha=0.
+
+# Create a grid of alpha values (tuning parameter for ridge regression)
+tuning_par <- seq(0, 10, length=3)
+
+# Train ridge regression models with different tuning parameters using cross-validation
+#perform 10-fold cross-validation to find optimal lambda value
+lasso_model2g <- cv.glmnet(train_X, train_y, alpha = 1, lambda = tuning_par, nfolds = 10)
+
+#find optimal lambda value that minimizes test MSE
+best_lasso_lambda2g <- lasso_model2g$lambda.min
+best_lasso_lambda2g
+
+#produce plot of test MSE by lambda value
+plot(lasso_model2g) 
+
+# Train the final ridge regression model on the entire training data with the best lambda
+best_lasso_model2g <- glmnet(as.matrix(train_X), train_y, alpha = 1, lambda = best_lasso_lambda2g)
+
+# Make predictions on the test set
+predicted_lasso2g <- predict(best_lasso_model2g, s = best_lasso_lambda2g, newx = test_X)
+
+# Calculate MSE on the test set
+lasso_mse2g <- mean((predicted_lasso2g - test_y)^2)
+print(paste("Mean Squared Error (MSE) on Test Set:", lasso_mse2g))
+
+```
+
+### Part 3
+## 3(a) and 3(b)
+```{r}
+## I am writing two different functions
+## Function to split the data into training and test sample with the specified ratio
+split_data <- function(data, train_ratio = 0.5, seed = 0) {
+              set.seed(seed)
+              n <- nrow(data)
+              train_indices <- sample(1:n, size = round(train_ratio * n), replace = FALSE)
+              train_data <- data[train_indices, ]
+              test_data <- data[-train_indices, ]
+              return(list(train = train_data, test = test_data))
+}
+
+
+## Function to add or not add noise
+noise_data <- function(data, noise=0) {
+              if(noise==1){
+              # Add noise
+              data$noise1 <- data$host_experience + rnorm(nrow(data), .01)
+              data$noise2 <- data$host_is_superhost + rnorm(nrow(data), .01)
+              data$noise3 <- data$number_of_reviews + rnorm(nrow(data), .01)
+              
+              } else {
+              data <- data
+  
+}
+      return(data)          
+
+  
+}
+
+## First I will get the data with or without noise
+airbnb <-noise_data(airbnb_final)
+
+## Then I will spilt it into training and test sample
+# Call the function
+data_split <- split_data(airbnb)
+
+# Access training data
+train_airbnb <- data_split$train
+
+# Access test data
+test_airbnb <- data_split$test
+
+```
+
+

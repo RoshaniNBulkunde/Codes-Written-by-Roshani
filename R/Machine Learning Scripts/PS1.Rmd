@@ -1,0 +1,420 @@
+---
+title: "PS1"
+author: "Roshani Bulkunde"
+date: "2024-01-25"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Set working directory
+```{r dir}
+data_dir <-'C:/Users/rosha/Dropbox (GaTech)/Georgia Tech/Spring 2024/Econ 8803 ML for Econ/Data'
+
+setwd('C:/Users/rosha/Dropbox (GaTech)/Georgia Tech/Spring 2024/Econ 8803 ML for Econ/Problem sets/PS1')
+```
+
+```{r}
+# Load packages
+library(tidyverse)
+library(vtable)
+library(readxl)
+library(purrr)
+```
+
+
+## Wind turbine data
+# Bring this data into R. You can use read.csv().
+```{r}
+WindTurbineR <- read_csv('C:/Users/rosha/Dropbox (GaTech)/Georgia Tech/Spring 2024/Econ 8803 ML for Econ/Data/Wind Turbine/uswtdb_v6_0_20230531.csv')
+```
+##3. Remove observations with missing information on operation year, project capacity,
+turbine capacity, turbine hub-height, turbine rotor diameter, longitude, and latitude
+```{r}
+#  To exclude observations that have missing data for only a subset of variables, create a logical vector that is a series of calls to is.na().
+miss_wt <- is.na(WindTurbineR$p_year) |  
+           is.na(WindTurbineR$p_cap) |  
+           is.na(WindTurbineR$t_cap)  |  
+           is.na(WindTurbineR$t_hh) |  
+           is.na(WindTurbineR$t_rd) |  
+           is.na(WindTurbineR$xlong) |  
+           is.na(WindTurbineR$ylat)
+
+# Count the number of rows flagged for deletion
+sum(miss_wt)
+
+# Use ! to include those that are NOT missing
+WindTurbine1 <- subset(WindTurbineR,
+                      subset = !miss_wt)
+
+# Count the number of rows kept
+nrow(WindTurbine1)
+```
+## 4. Remove observations for projects that started operating before 2001
+```{r}
+# WindTurbine2 <- subset(WindTurbine1, WindTurbine1$p_year > 2000)
+WindTurbine2 <- WindTurbine1 %>% filter(p_year>2000)
+
+# check the range of the year
+range(WindTurbine2$p_year)
+```
+## 5.Remove observations from Alaska and Hawaii (we would only focus on contiguous
+US).
+```{r}
+WindTurbineFinal <- WindTurbine2 %>% filter(!t_state %in% c("HI","AK"))
+
+# convert kW to MW
+WindTurbineFinal$t_cap <- WindTurbineFinal$t_cap/1000
+```
+##6. Create a summary table and show the mean, standard deviation, min, and max of
+turbine capacity (in MW, not 1 MW = 1000 kW), turbine hub-height, turbine rotor
+diameter. Also report the total number of turbines (i.e. N) in the table? *
+```{r}
+labs <- c('Turbine capacity (in MW)',
+    'Turbine hub-height',
+    'Turbine rotor diameter')
+
+sumtable(WindTurbineFinal, vars = c('t_cap','t_hh', 't_rd'),
+         summ=c('notNA(x)', 'mean(x)', 'sd(x)', 'min(x)', 'max(x)'),
+         summ.names = list(c('N','Mean','SD','Min','Max')),
+         labels=labs)
+
+
+
+```
+## 7. Aggregate/collapse the data to the project level. Use EIA ID for the aggregation.
+#You can use several commands for aggregating data. The most common functions are: aggregate() or summarize() in package dplyr.
+# While collapsing/aggregating the dataset to the project level, aggregate (or
+keep depending on the variable) the following variables: mean project capacity
+(in MW), operating year, total number of turbines in the project, mean
+capacity of a turbine in the project (in MW), mean turbine hub-height, mean
+turbine rotor diameter, state, and county where the project is located (for some
+of these variables, you may use the first occurrence).
+```{r}
+wt1 <- WindTurbineFinal %>%
+       group_by(eia_id) %>%
+       summarise(mean_pcap = mean(p_cap),
+            tot_pturbine = sum(p_tnum),
+            mean_tcap=mean(t_cap),
+            mean_thh=mean(t_hh),
+            mean_trd=mean(t_rd))
+
+wt2 <- WindTurbineFinal %>%
+       select(eia_id, p_year, t_state, t_county) %>%
+       distinct()
+
+wt2 <- wt2 %>%
+       distinct(eia_id, .keep_all = TRUE)
+
+WindTP <- merge(wt1, wt2, by='eia_id')
+
+```
+# 8. Create a summary table for the data at the project level. Report the mean, standard
+deviation, min, and max of mean project capacity, average number of turbines in
+a project, average hub-height, average rotor diameter. Report the total number of
+projects (i.e. N)?
+
+```{r}
+labs1 <- c('Mean project capacity', 'Average number of turbines in a project',
+    'Average hub-height', 'Average rotor diameter' )
+sumtable(WindTP, vars = c('mean_pcap','tot_pturbine', 'mean_thh', 'mean_trd'),
+         summ=c('notNA(x)', 'mean(x)', 'sd(x)', 'min(x)', 'max(x)'),
+         summ.names = list(c('N','Mean','SD','Min','Max')),
+         labels=labs1)
+```
+# Remove datasets not required 
+```{r}
+rm(WindTurbineR, WindTurbine1, WindTurbine2, wt1, wt2 )
+```
+## 9. While using the dataset at the project level, create a plot(s) (using ggplot) showing
+the evolution of mean hub-height and mean rotor diameter over the years (2001 -
+2022). Provide a brief interpretation of your findings. *
+
+```{r}
+# Aggregate the project level data over years
+WTP_Year <- WindTP %>% 
+            group_by(p_year) %>%
+            summarize(mean.thh=mean(mean_thh),
+                      mean.trd=mean(mean_trd))
+  
+# Evaluation of mean hub-height over years
+ggplot(data = WTP_Year) +
+  geom_point(mapping = aes(x = p_year , y = mean.thh), col="blue") +
+  labs(x="Years", y="Mean hub-height", title="Evaluation of mean hub-height over years") + 
+  theme_bw()
+
+# Evaluation of mean rotor diameter over years
+ggplot(data = WTP_Year) +
+  geom_point(mapping = aes(x = p_year , y = mean.trd), col="blue") +
+  labs(x="Years", y="Mean rotor diameter", title="Evaluation of mean rotor diameter over years") + 
+  theme_bw()
+```
+## 10. Using the cleaned turbine data and the project level data, answer the following
+questions (report all of these information in a well formatted table): *
+(a) Calculate the top five states with the most wind turbines.
+
+```{r}
+# Use the cleaned turbine data to calculate the total number of wind turbines at state level
+WT_state <- WindTurbineFinal %>% 
+            group_by(t_state) %>%
+            summarize(tot_tstate=sum(p_tnum))
+
+
+```
+# (b) Calculate the top five states with the highest capacity of wind projects (in
+MW). Show the total capacity of that state and the US for comparison.
+```{r}
+# Use project level data
+WTP_state <-  WindTurbineFinal %>% 
+            group_by(t_state) %>%
+            summarize(t_pcap=sum(p_cap))
+
+WTP_state$t_us_pcap= sum(WTP_state$t_pcap)
+```
+#####################################################################################
+
+### 2 Wind Ordinance data
+
+# Remove observations before 2001.
+```{r}
+WindOrdiR <- read_csv('C:/Users/rosha/Dropbox (GaTech)/Georgia Tech/Spring 2024/Econ 8803 ML for Econ/Data/wind_ordinance_main.csv')
+
+WindOrdinanceFinal<- WindOrdiR %>% filter(ordinance_year>2000)
+
+```
+## 3. Calculate the 3 states with the most number of wind ordinances and the 3 states
+with least number of wind ordinances. Compare this with the total wind capacity
+(MW) in these states. Is there any meaningful conclusion we can draw from this
+comparison? Why or why not? *
+```{r}
+WindOrdinanceFinal <- WindOrdinanceFinal %>%
+              add_count(State, name = 'tot_ordinance')
+
+# Sort the data with total number of ordinance
+WO_totord <- WindOrdinanceFinal %>% arrange(desc(tot_ordinance))
+```
+## 4. Collapse this dataset at the year level. Create a graph (using ggplot) that shows
+two lines: *
+(a) cumulative number of ordinances in each year, and
+(b) total new ordinances enacted each year
+Compare the two lines and provide a brief interpretation (2-3 sentences).
+
+```{r}
+# Collapse this dataset at the year level
+wo_col_yr <- WindOrdinanceFinal %>% 
+            group_by(ordinance_year) %>%
+            tally()
+
+wo_col_yr <- rename(wo_col_yr, tot_ordinance=n)
+
+# Number of ordinances in each year
+ggplot(data=wo_col_yr, aes(x=ordinance_year, y=tot_ordinance)) +
+  geom_bar(stat="identity", fill="steelblue")+
+  geom_text(aes(label=tot_ordinance), vjust=1.6, color="white", size=3.5)+
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  scale_x_continuous(labels = 2001:2023, breaks = 2001:2023) +
+  labs(x="Ordinance Year", y="Number of ordinances", title="Number of ordinances in each year")
+
+# Create a variable for cumulative ordinance
+wo_col_yr <- wo_col_yr %>% mutate(cum_ordinace = cumsum(tot_ordinance))
+
+# Cumulative number of ordinances in each year
+ggplot(data=wo_col_yr, aes(x=ordinance_year, y=cum_ordinace)) +
+  geom_bar(stat="identity", fill="steelblue")+
+  geom_text(aes(label=cum_ordinace), vjust=1.6, color="white", size=3.5)+
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  scale_x_continuous(labels = 2001:2023, breaks = 2001:2023) +
+  labs(x="Year", y="Cumulative umber of ordinances", title="Cumulative number of ordinances in each year")
+```
+#(b) total new ordinances enacted each year 
+```{r}
+# create a lag variable
+#wo_col_yr1 <- setDT(wo_col_yr)[, c("ordi_lastyr") := .(shift(tot_ordinance, 1L, fill = NA, type = "lag"))]
+
+
+           
+ggplot(data=wo_col_yr, aes(x=ordinance_year, y=tot_ordinance)) +
+  geom_bar(stat="identity", fill="steelblue")+
+  geom_text(aes(label=tot_ordinance), vjust=1.6, color="white", size=3.5)+
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  scale_x_continuous(labels = 2001:2023, breaks = 2001:2023) +
+  labs(x="Ordinance Year", y="New ordinances enacted", title="Total new ordinances enacted each year ")
+```
+
+### 3 Wind Resource Quality data
+
+# Download the csv file wtk_site_metadata.csv from Canvas and bring it in R.
+```{r}
+wtk_site_metadata <- read_csv('C:/Users/rosha/Dropbox (GaTech)/Georgia Tech/Spring 2024/Econ 8803 ML for Econ/Data/wtk_site_metadata.csv')
+```
+
+#3. Remove all off-shore observations (i.e. unknown state, county, or “offshore” power
+curve).
+4. Remove observations in Alaska and Hawaii.
+```{r}
+wtk_site_c1 <- wtk_site_metadata %>% filter(State!="Unknown" | County!="Unknown" | power_curve!="offshore") 
+
+wtk_site_c1 <- wtk_site_c1 %>% filter(!State %in% c("Alaska","Hawaii"))
+
+```
+# 5. Create a summary table with mean, standard deviation, min, and max of wind
+speed (m/s), capacity factor, fraction of usable area. 
+
+```{r}
+labs2 <- c('Wind speed (m/s)', 'Capacity factor', 'Fraction of usable area' ) 
+
+sumtable(wtk_site_c1, vars = c('wind_speed','capacity_factor', 'fraction_of_usable_area'),
+         summ=c('mean(x)', 'sd(x)', 'min(x)', 'max(x)'),
+         summ.names = list(c('Mean','SD','Min','Max')),
+         labels=labs2)
+```
+# 6. List the top five states with the highest wind speeds and capacity factors. Compare
+this with the states with the highest wind project capacity (from question 1.10).
+What do you notice?
+
+```{r}
+# Sort the data with wind speeds and capacity factors
+wtk_site_c2 <- wtk_site_c1 %>% 
+            group_by(State) %>%
+            summarize(mean_wind_speed=mean(wind_speed),
+                      mean_capacity_factor=mean(capacity_factor))
+
+wtk_site_cwp <- wtk_site_c2 %>% arrange(desc(mean_wind_speed))
+
+wtk_site_ccf <- wtk_site_c2 %>% arrange(desc(mean_capacity_factor))
+
+```
+### 4 Merging the datasets
+
+```{r}
+# Wind ordinance data contains only the abbreviation for the states.We need to merge the data which include name and abbreviation for the state.
+
+State <- read_csv("C:/Users/rosha/Dropbox (GaTech)/Georgia Tech/Spring 2024/Econ 8803 ML for Econ/Problem sets/PS1/states.csv")
+```
+```{r}
+# merge the Wind turbine data to have a column with state abbreviation
+WindTurnineFinal <- left_join(WindTurbineFinal, State, by = c("t_state" = "Abbreviation"))
+
+WindTurnineFinal1 <-WindTurnineFinal %>% mutate(County = word(t_county , 1  , -2))
+
+```
+# Merge the wind turbines and wind ordinance datasets on the basis of state and
+county variables.3 Note that county names across the states may not be unique, so,
+keep this in mind while writing the code for merging.
+```{r}
+Wind_turb_ordi <- full_join(WindTurnineFinal1, WindOrdinanceFinal,by=c("State","County"))
+```
+# 2. Certain observations in the merged dataset might have NAs in the ordinance_year
+field. Create a binary variable that tracks which observations have an ordinance in
+a specific year.
+```{r}
+Wind_turb_ordi$oy2001 <- ifelse(Wind_turb_ordi$ordinance_year==2001,1,0)
+Wind_turb_ordi$oy2002 <- ifelse(Wind_turb_ordi$ordinance_year==2002,1,0)
+Wind_turb_ordi$oy2003 <- ifelse(Wind_turb_ordi$ordinance_year==2003,1,0)
+Wind_turb_ordi$oy2004 <- ifelse(Wind_turb_ordi$ordinance_year==2004,1,0)
+Wind_turb_ordi$oy2005 <- ifelse(Wind_turb_ordi$ordinance_year==2005,1,0)
+Wind_turb_ordi$oy2006 <- ifelse(Wind_turb_ordi$ordinance_year==2006,1,0)
+Wind_turb_ordi$oy2007 <- ifelse(Wind_turb_ordi$ordinance_year==2007,1,0)
+Wind_turb_ordi$oy2008 <- ifelse(Wind_turb_ordi$ordinance_year==2008,1,0)
+Wind_turb_ordi$oy2009 <- ifelse(Wind_turb_ordi$ordinance_year==2009,1,0)
+Wind_turb_ordi$oy2010 <- ifelse(Wind_turb_ordi$ordinance_year==2010,1,0)
+Wind_turb_ordi$oy2011 <- ifelse(Wind_turb_ordi$ordinance_year==2011,1,0)
+Wind_turb_ordi$oy2012 <- ifelse(Wind_turb_ordi$ordinance_year==2012,1,0)
+Wind_turb_ordi$oy2013 <- ifelse(Wind_turb_ordi$ordinance_year==2013,1,0)
+Wind_turb_ordi$oy2014 <- ifelse(Wind_turb_ordi$ordinance_year==2014,1,0)
+Wind_turb_ordi$oy2015 <- ifelse(Wind_turb_ordi$ordinance_year==2015,1,0)
+Wind_turb_ordi$oy2016 <- ifelse(Wind_turb_ordi$ordinance_year==2016,1,0)
+Wind_turb_ordi$oy2017 <- ifelse(Wind_turb_ordi$ordinance_year==2017,1,0)
+Wind_turb_ordi$oy2018 <- ifelse(Wind_turb_ordi$ordinance_year==2018,1,0)
+Wind_turb_ordi$oy2019 <- ifelse(Wind_turb_ordi$ordinance_year==2019,1,0)
+Wind_turb_ordi$oy2020 <- ifelse(Wind_turb_ordi$ordinance_year==2020,1,0)
+Wind_turb_ordi$oy2021 <- ifelse(Wind_turb_ordi$ordinance_year==2021,1,0)
+Wind_turb_ordi$oy2022 <- ifelse(Wind_turb_ordi$ordinance_year==2022,1,0)
+Wind_turb_ordi$oy2023 <- ifelse(Wind_turb_ordi$ordinance_year==2023,1,0)
+```
+# 3. Collapse this data to the county level. Make sure to preserve the temporal dimensions
+of the data.
+```{r}
+#  Collapse this data to the county level 
+Wind_turb_ordi_county <- Wind_turb_ordi %>%
+                   group_by(County, p_year, ordinance_year) %>%
+                  summarize(mean_tcap=mean(t_cap))
+```
+
+
+# 4. For this dataset at the county level, create a graph that shows the average wind capacity (MW) of counties with and without a wind ordinance over the years (from2001 to 2022). What do you notice?`
+```{r}
+Wind_turb_ordi1 <-  subset(Wind_turb_ordi,
+                     subset = !is.na(Wind_turb_ordi$ordinance_year))
+                     
+#  Collapse this data to the county level 
+Wind_turb_ordi1 <- Wind_turb_ordi1 %>%
+                   group_by(p_year) %>%
+                  summarize(mean_tcap=mean(t_cap))
+
+# First drop the observations with counties with no ordinance year
+Wind_turb_ordi2 <-  subset(Wind_turb_ordi,
+                     subset = is.na(Wind_turb_ordi$ordinance_year))
+
+#  Collapse this data to the county level 
+Wind_turb_ordi2 <- Wind_turb_ordi2 %>%
+                   group_by(p_year) %>%
+                   summarize(mean_tcap=mean(t_cap))
+
+#  create a graph that shows the average wind capacity (MW) of counties with a wind ordinance
+ggplot() + 
+  geom_line(data = Wind_turb_ordi1, aes(x = p_year, y = mean_tcap, color = "With Ordinance Year")) +
+  geom_line(data = Wind_turb_ordi2, aes(x = p_year, y = mean_tcap, color = "Without  Ordinance Year")) + 
+  labs(color = "Legend") + 
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=90,hjust=1,vjust=0.5)) +
+  scale_x_continuous(labels = 2001:2023, breaks = 2001:2023) +
+  labs(x="Project Year", y="The average wind capacity (MW)")
+
+```
+
+
+
+# 5. Now, collapse the merged dataset in (2). at the project level. Create a summary
+table that could answer the following question: *
+• Are projects in a county with an ordinance bigger in size (nameplate capacity),
+and use more technologically advanced turbines (i.e. bigger turbines
+measured by rotor diameter)?
+
+```{r}
+WTOP_county <- Wind_turb_ordi %>% 
+            group_by(eia_id, County) %>%
+            summarize(mean.thh=mean(t_hh),
+                      mean.trd=mean(t_rd),
+                      tot.ordinance=sum(tot_ordinance),
+                      tot_pcap=sum(p_cap))
+
+# Create a subdata from above for the counties with ordinance year
+WTOP_county_ord <- subset(WTOP_county,
+                     subset = !is.na(WTOP_county$tot.ordinance))
+
+# Create a subdata from above for the counties with no ordinance year
+WTOP_county_no_ord <- subset(WTOP_county,
+                     subset = is.na(WTOP_county$tot.ordinance))
+
+# Sum stats for the counties with ordinance year
+labs3 <- c('Average turbine hub-height', 'Average rotor diameter', 'Total project capacity') 
+
+sumtable(WTOP_county_ord, vars = c('mean.thh','mean.trd', 'tot_pcap'),
+         summ=c('mean(x)', 'median(x)', 'sd(x)', 'min(x)', 'max(x)'),
+         summ.names = list(c('Mean','Median', 'SD','Min','Max')),
+         labels=labs3)
+
+```
+```{r}
+
+# Sum stats for the counties with ordinance year
+sumtable(WTOP_county_no_ord, vars = c('mean.thh','mean.trd', 'tot_pcap'),
+         summ=c('mean(x)', 'median(x)', 'sd(x)', 'min(x)', 'max(x)'),
+         summ.names = list(c('Mean','Median', 'SD','Min','Max')),
+         labels=labs3)
+```
+
+
